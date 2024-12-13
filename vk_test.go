@@ -1,6 +1,7 @@
 package svk
 
 import (
+	"errors"
 	"math/big"
 	"testing"
 
@@ -29,14 +30,33 @@ func (c *MainCircuit) Define(api frontend.API) error {
 	}
 	hFn.Write(c.Preimage)
 	api.AssertIsEqual(c.Hash, hFn.Sum())
+	cmtr, ok := api.(frontend.Committer)
+	if !ok {
+		return errors.New("api is not a committer")
+	}
+	pre, err := cmtr.Commit(c.Preimage)
+	if err != nil {
+		return err
+	}
+	api.AssertIsDifferent(pre, 0)
 	return nil
 }
 
 type DummyCircuit struct {
 	A frontend.Variable `gnark:",public"`
+	B frontend.Variable
 }
 
 func (c *DummyCircuit) Define(api frontend.API) error {
+	cmtr, ok := api.(frontend.Committer)
+	if !ok {
+		return errors.New("api is not a committer")
+	}
+	b, err := cmtr.Commit(c.B)
+	if err != nil {
+		return err
+	}
+	api.AssertIsDifferent(b, 0)
 	return nil
 }
 
@@ -76,9 +96,9 @@ func TestSameCircuitsInfo(t *testing.T) {
 	c.Assert(err, qt.IsNil)
 	dummyVk := stdgroth16.PlaceholderVerifyingKey[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](dummyCCS)
 
-	c.Assert(dummyVk.G1.K, qt.HasLen, len(mainVk.G1.K))
-	c.Assert(dummyVk.CommitmentKeys, qt.HasLen, len(mainVk.CommitmentKeys))
-	c.Assert(dummyVk.PublicAndCommitmentCommitted, qt.ContentEquals, mainVk.PublicAndCommitmentCommitted)
+	c.Assert(dummyVk.G1.K, qt.HasLen, len(mainVk.G1.K), qt.Commentf("%d vs %d", len(dummyVk.G1.K), len(mainVk.G1.K)))
+	c.Assert(dummyVk.CommitmentKeys, qt.HasLen, len(mainVk.CommitmentKeys), qt.Commentf("%d vs %d", len(dummyVk.CommitmentKeys), len(mainVk.CommitmentKeys)))
+	c.Assert(dummyVk.PublicAndCommitmentCommitted, qt.ContentEquals, mainVk.PublicAndCommitmentCommitted, qt.Commentf("%v vs %v", dummyVk.PublicAndCommitmentCommitted, mainVk.PublicAndCommitmentCommitted))
 
 	c.Log("len(G1.K)", len(mainVk.G1.K))
 	c.Log("len(CommitmentKeys)", len(mainVk.CommitmentKeys))
@@ -105,7 +125,7 @@ func TestOuterCircuit(t *testing.T) {
 	fixedMainVk, err := stdgroth16.ValueOfVerifyingKeyFixed[sw_bls12377.G1Affine, sw_bls12377.G2Affine, sw_bls12377.GT](mainVk)
 	c.Assert(err, qt.IsNil)
 
-	dummyCCS, dummyPubWitness, dummyProof, dummyVk, err := compileCircuit(&DummyCircuit{}, &DummyCircuit{A: 1}, ecc.BW6_761.ScalarField(), ecc.BLS12_377.ScalarField())
+	dummyCCS, dummyPubWitness, dummyProof, dummyVk, err := compileCircuit(&DummyCircuit{}, &DummyCircuit{1, 1}, ecc.BW6_761.ScalarField(), ecc.BLS12_377.ScalarField())
 	c.Assert(err, qt.IsNil)
 	dummyPubInputsPlaceholder := stdgroth16.PlaceholderWitness[sw_bls12377.ScalarField](dummyCCS)
 	dummyProofPlaceholder := stdgroth16.PlaceholderProof[sw_bls12377.G1Affine, sw_bls12377.G2Affine](dummyCCS)
