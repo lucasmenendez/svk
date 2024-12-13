@@ -1,4 +1,4 @@
-module svk
+module github.com/lucasmenendez/svk
 
 go 1.23.3
 
